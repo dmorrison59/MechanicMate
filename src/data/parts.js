@@ -1,0 +1,31 @@
+export const PART_CATEGORIES = [
+  { id: 'brakes',        label: 'Brake Pads',      icon: '🛑', term: 'brake pads' },
+  { id: 'rotors',        label: 'Brake Rotors',    icon: '⚙️', term: 'brake rotors' },
+  { id: 'oil-filter',    label: 'Oil Filter',      icon: '🛢️', term: 'oil filter' },
+  { id: 'air-filter',    label: 'Air Filter',      icon: '🌬️', term: 'engine air filter' },
+  { id: 'cabin-filter',  label: 'Cabin Filter',    icon: '❄️', term: 'cabin air filter' },
+  { id: 'battery',       label: 'Battery',         icon: '🔋', term: 'car battery' },
+  { id: 'spark-plugs',   label: 'Spark Plugs',     icon: '⚡', term: 'spark plugs' },
+  { id: 'wipers',        label: 'Wiper Blades',    icon: '💧', term: 'windshield wiper blades' },
+  { id: 'alternator',    label: 'Alternator',      icon: '🔌', term: 'alternator' },
+  { id: 'starter',       label: 'Starter',         icon: '🔑', term: 'starter motor' },
+  { id: 'headlight',     label: 'Headlight Bulb',  icon: '💡', term: 'headlight bulb' },
+  { id: 'serpentine',    label: 'Serpentine Belt', icon: '➰', term: 'serpentine belt' },
+  { id: 'thermostat',    label: 'Thermostat',      icon: '🌡️', term: 'engine thermostat' },
+  { id: 'fuel-pump',     label: 'Fuel Pump',       icon: '⛽', term: 'fuel pump' },
+  { id: 'radiator',      label: 'Radiator',        icon: '♨️', term: 'radiator' },
+  { id: 'oxygen-sensor', label: 'O2 Sensor',       icon: '🧪', term: 'oxygen sensor' },
+];
+
+export const MAINTENANCE_ITEMS = [
+  { id: 'oil',        label: 'Oil Change',         icon: '🛢️', intervalMiles: 5000,  intervalMonths: 6  },
+  { id: 'tire-rot',   label: 'Tire Rotation',      icon: '🔄', intervalMiles: 7500,  intervalMonths: 6  },
+  { id: 'brakes',     label: 'Brake Inspection',   icon: '🛑', intervalMiles: 12000, intervalMonths: 12 },
+  { id: 'air-filter', label: 'Air Filter',         icon: '🌬️', intervalMiles: 15000, intervalMonths: 12 },
+  { id: 'battery',    label: 'Battery Check',      icon: '🔋', intervalMiles: 0,     intervalMonths: 6  },
+  { id: 'coolant',    label: 'Coolant Flush',      icon: '♨️', intervalMiles: 30000, intervalMonths: 24 },
+  { id: 'trans',      label: 'Transmission Fluid', icon: '⚙️', intervalMiles: 60000, intervalMonths: 48 },
+  { id: 'spark',      label: 'Spark Plugs',        icon: '⚡', intervalMiles: 30000, intervalMonths: 24 },
+  { id: 'belts',      label: 'Belt Inspection',    icon: '➰', intervalMiles: 60000, intervalMonths: 48 },
+  { id: 'wipers',     label: 'Wiper Blades',       icon: '💧', intervalMiles: 0,     intervalMonths: 12 },
+];
