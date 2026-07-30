@@ -1,115 +1,104 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, TextInput,
-  ScrollView, ActivityIndicator, StyleSheet,
-} from 'react-native';
-import { COLORS, sharedStyles } from '../theme';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, TYPE, hexA, sharedStyles } from '../theme';
 import { YEARS, MAKES } from '../data/vehicles';
 import { fetchModels } from '../utils/nhtsa';
+import Dropdown from './Dropdown';
 
 export default function VehiclePicker({ year, make, model, onChange }) {
   const [models, setModels] = useState([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [modelSearch, setModelSearch] = useState('');
+  const [loading, setLoading] = useState(false);
 
+  // Live model list from NHTSA. The `active` flag kills stale responses
+  // when the user changes make faster than the network answers.
   useEffect(() => {
+    let active = true;
     if (year && make) {
-      setLoadingModels(true);
+      setLoading(true);
       setModels([]);
-      setModelSearch('');
-      onChange({ model: '' });
       fetchModels(year, make).then((m) => {
-        setModels(m);
-        setLoadingModels(false);
+        if (active) { setModels(m); setLoading(false); }
       });
+    } else {
+      setModels([]);
+      setLoading(false);
     }
+    return () => { active = false; };
   }, [year, make]);
 
-  const filteredModels = modelSearch
-    ? models.filter((m) =>
-        m.toLowerCase().includes(modelSearch.toLowerCase())
-      )
-    : models;
+  // Progressive state for the Model dropdown — it always knows WHY it's locked.
+  const canLoad = Boolean(year && make);
+  const modelDisabled = !canLoad || loading || models.length === 0;
+  let modelPh = 'Select model';
+  if (!canLoad) modelPh = 'Select year & make first';
+  else if (loading) modelPh = 'Loading models…';
+  else if (models.length === 0) modelPh = 'No models for this combo';
 
   return (
     <View style={sharedStyles.card}>
-      <Text style={sharedStyles.cardLabel}>YEAR</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-        {YEARS.map((y) => (
-          <TouchableOpacity
-            key={y}
-            style={[styles.chip, year === y && styles.chipActive]}
-            onPress={() => onChange({ year: y, make: '', model: '' })}
-          >
-            <Text style={[styles.chipText, year === y && styles.chipTextActive]}>{y}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.head}>
+        <View style={styles.iconChip}>
+          <Ionicons name="car-outline" size={24} color={COLORS.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Your Vehicle</Text>
+          <Text style={styles.subtitle}>
+            Year, make & model — models load live from NHTSA.
+          </Text>
+        </View>
+      </View>
 
-      {year ? (
-        <>
-          <Text style={sharedStyles.cardLabel}>MAKE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-            {MAKES.map((m) => (
-              <TouchableOpacity
-                key={m}
-                style={[styles.chip, make === m && styles.chipActive]}
-                onPress={() => onChange({ make: m, model: '' })}
-              >
-                <Text style={[styles.chipText, make === m && styles.chipTextActive]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </>
+      <Dropdown
+        label="Year" required value={year} placeholder="Select year"
+        options={YEARS}
+        onSelect={(v) => onChange({ year: v, make: '', model: '' })}
+      />
+
+      <Dropdown
+        label="Make" required value={make}
+        placeholder={year ? 'Select make' : 'Select year first'}
+        options={MAKES} disabled={!year}
+        onSelect={(v) => onChange({ make: v, model: '' })}
+      />
+
+      <Dropdown
+        label="Model" required value={model}
+        placeholder={modelPh} options={models}
+        disabled={modelDisabled} searchable
+        onSelect={(v) => onChange({ model: v })}
+      />
+
+      {loading ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={COLORS.cyan} />
+          <Text style={styles.loadingText}>Pulling the live model list…</Text>
+        </View>
       ) : null}
 
-      {year && make ? (
-        <>
-          <Text style={sharedStyles.cardLabel}>MODEL</Text>
-          {loadingModels ? (
-            <ActivityIndicator color={COLORS.accent} style={{ marginVertical: 12 }} />
-          ) : (
-            <>
-              <TextInput
-                style={sharedStyles.input}
-                placeholder="Search models..."
-                placeholderTextColor={COLORS.textDim}
-                value={modelSearch}
-                onChangeText={setModelSearch}
-              />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={[styles.chipScroll, { marginTop: 8 }]}
-              >
-                {filteredModels.map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.chip, model === m && styles.chipActive]}
-                    onPress={() => onChange({ model: m })}
-                  >
-                    <Text style={[styles.chipText, model === m && styles.chipTextActive]}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              {filteredModels.length === 0 && (
-                <Text style={sharedStyles.hint}>No models found. Try a different search.</Text>
-              )}
-            </>
-          )}
-        </>
-      ) : null}
+      <View style={styles.foot}>
+        <Ionicons name="shield-checkmark-outline" size={13} color={COLORS.textDim} />
+        <Text style={styles.footText}>Free U.S. DOT data · no account needed</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  chipScroll: { marginBottom: 4 },
-  chip: {
-    paddingHorizontal: 16, paddingVertical: 9, backgroundColor: COLORS.bg,
-    borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: COLORS.border,
+  head: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  iconChip: {
+    width: 46, height: 46, borderRadius: 13, marginRight: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: hexA(COLORS.accent, 0.14),
+    borderWidth: 1, borderColor: hexA(COLORS.accent, 0.3),
+    shadowColor: COLORS.accent, shadowOpacity: 0.4,
+    shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  chipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  chipText: { color: '#CBD5E1', fontWeight: '600' },
-  chipTextActive: { color: COLORS.textOnAccent, fontWeight: '800' },
+  title: { color: COLORS.text, fontSize: 17, fontWeight: '800', letterSpacing: 0.2 },
+  subtitle: { color: COLORS.textMuted, fontSize: TYPE.sm, marginTop: 2, lineHeight: 18 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', marginTop: -4, marginBottom: 12, gap: 8 },
+  loadingText: { color: COLORS.cyan, fontSize: TYPE.xs, fontWeight: '700', letterSpacing: 0.3 },
+  foot: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 },
+  footText: { color: COLORS.textDim, fontSize: TYPE.micro, letterSpacing: 0.2 },
 });
