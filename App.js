@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView,
+  View, Text, Pressable, ScrollView, TextInput,
   SafeAreaView, StatusBar, Platform, StyleSheet, Alert,
 } from 'react-native';
-import { COLORS } from './src/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, TYPE, hexA, press, sharedStyles } from './src/theme';
 import { useGarage, useMaintenance } from './src/hooks/useGarage';
 
 import VehiclePicker     from './src/components/VehiclePicker';
@@ -12,21 +13,25 @@ import PartGrid          from './src/components/PartGrid';
 import ActionModal       from './src/components/ActionModal';
 import GarageScreen      from './src/components/GarageScreen';
 import MaintenanceScreen from './src/components/MaintenanceScreen';
+import TopTabs           from './src/components/TopTabs';
 
 const TABS = [
-  { id: 'parts',  icon: '🔍', label: 'Find Parts' },
-  { id: 'garage', icon: '🏠', label: 'Garage' },
-  { id: 'maint',  icon: '🔧', label: 'Maintenance' },
+  { id: 'search',  icon: 'search-outline', label: 'Search' },
+  { id: 'vin',     icon: 'scan-outline',   label: 'VIN' },
+  { id: 'garage',  icon: 'home-outline',   label: 'Garage' },
+  { id: 'history', icon: 'time-outline',   label: 'History' },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('parts');
+  const [activeTab, setActiveTab] = useState('search');
+  const isVin = activeTab === 'vin';
 
-  const [mode, setMode]       = useState('vehicle');
-  const [year, setYear]       = useState('');
-  const [make, setMake]       = useState('');
-  const [model, setModel]     = useState('');
-  const [vin, setVin]         = useState('');
+  const [year, setYear]     = useState('');
+  const [make, setMake]     = useState('');
+  const [model, setModel]   = useState('');
+  const [engine, setEngine] = useState('');
+
+  const [vin, setVin]             = useState('');
   const [decodedVin, setDecodedVin] = useState(null);
 
   const [selectedPart, setSelectedPart] = useState(null);
@@ -35,157 +40,176 @@ export default function App() {
   const garage = useGarage();
   const maint  = useMaintenance();
 
+  // ── Vehicle string (the single source of truth for every search) ──
   const vehicleString = () => {
-    if (mode === 'vin') {
+    if (isVin) {
       if (decodedVin?.make) {
         return [decodedVin.year, decodedVin.make, decodedVin.model]
           .filter(Boolean).join(' ');
       }
       return vin.trim();
     }
-    return [year, make, model].filter(Boolean).join(' ');
+    return [year, make, model, engine].filter(Boolean).join(' ');
   };
 
-  const hasVehicle = () => {
-    if (mode === 'vin') {
-      return Boolean(decodedVin?.make) || vin.trim().length >= 11;
-    }
-    return Boolean(year && make);
+  const hasVehicle = () =>
+    isVin ? Boolean(decodedVin?.make) : Boolean(year && make);
+
+  const handleVehicleChange = (c) => {
+    if (c.year !== undefined)  { setYear(c.year);  setEngine(''); }
+    if (c.make !== undefined)  { setMake(c.make);  setEngine(''); }
+    if (c.model !== undefined) setModel(c.model);
   };
 
-  const handleVehicleChange = useCallback((changes) => {
-    if (changes.year !== undefined)  setYear(changes.year);
-    if (changes.make !== undefined)  setMake(changes.make);
-    if (changes.model !== undefined) setModel(changes.model);
-  }, []);
-
-  const handleVinDecoded = useCallback((result) => {
-    setDecodedVin(result);
-  }, []);
+  // Editing the VIN wipes any stale decode at the App level too.
+  const handleVinChange = (t) => { setVin(t); setDecodedVin(null); };
+  const handleVinDecoded = (r) => setDecodedVin(r);
 
   const handleSaveToGarage = () => {
-    const v =
-      mode === 'vin' && decodedVin
-        ? {
-            year: decodedVin.year, make: decodedVin.make,
-            model: decodedVin.model, vin: vin.trim(),
-            engine: decodedVin.engine, cylinders: decodedVin.cylinders,
-            displacement: decodedVin.displacement,
-            fuelType: decodedVin.fuelType, driveType: decodedVin.driveType,
-          }
-        : { year, make, model, vin: '' };
-
+    const v = isVin && decodedVin
+      ? {
+          year: decodedVin.year, make: decodedVin.make, model: decodedVin.model,
+          vin: vin.trim(), engine: decodedVin.engine, cylinders: decodedVin.cylinders,
+          displacement: decodedVin.displacement, fuelType: decodedVin.fuelType,
+          driveType: decodedVin.driveType,
+        }
+      : { year, make, model, vin: '' };
     garage.addVehicle(v);
-    Alert.alert('Saved! 🏠', `${v.year} ${v.make} ${v.model || ''} added to your garage.`);
+    Alert.alert('Saved 🏠', `${v.year} ${v.make} ${v.model || ''} parked in your garage.`);
   };
 
   const handleGarageSelect = (v) => {
-    setMode('vehicle');
+    setActiveTab('search');
     setYear(v.year);
     setMake(v.make);
     setModel(v.model || '');
-    setVin(v.vin || '');
-    setActiveTab('parts');
+    setEngine('');
   };
 
-  const openPart = (part) => {
-    setSelectedPart(part);
-    setModalVisible(true);
-  };
+  const openPart = (part) => { setSelectedPart(part); setModalVisible(true); };
 
-  const renderParts = () => (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.toggleRow}>
-        <TouchableOpacity
-          style={[styles.toggleBtn, mode === 'vehicle' && styles.toggleBtnActive]}
-          onPress={() => setMode('vehicle')}
-        >
-          <Text style={[styles.toggleText, mode === 'vehicle' && styles.toggleTextActive]}>
-            By Vehicle
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleBtn, mode === 'vin' && styles.toggleBtnActive]}
-          onPress={() => setMode('vin')}
-        >
-          <Text style={[styles.toggleText, mode === 'vin' && styles.toggleTextActive]}>
-            By VIN
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {mode === 'vehicle' ? (
-        <VehiclePicker year={year} make={make} model={model} onChange={handleVehicleChange} />
-      ) : (
-        <VinDecoder vin={vin} onChange={setVin} onDecoded={handleVinDecoded} />
-      )}
-
-      {hasVehicle() ? (
-        <View style={styles.bannerRow}>
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>🚗  {vehicleString()}</Text>
+  // The orange "your ride" banner + Save button, or the prompt that
+  // explains why the grid is still locked. Reused by both flows.
+  const gate = (promptText) =>
+    hasVehicle() ? (
+      <View style={styles.bannerRow}>
+        <View style={styles.banner}>
+          <View style={styles.bannerChip}>
+            <Ionicons name="car-sport-outline" size={16} color={COLORS.textOnAccent} />
           </View>
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSaveToGarage}>
-            <Text style={styles.saveBtnText}>+ Garage</Text>
-          </TouchableOpacity>
+          <Text style={styles.bannerText} numberOfLines={1}>{vehicleString()}</Text>
         </View>
-      ) : (
-        <Text style={styles.prompt}>
-          {mode === 'vehicle'
-            ? 'Pick a year and make to get started.'
-            : 'Enter your VIN and tap Decode.'}
-        </Text>
-      )}
+        <Pressable
+          onPress={handleSaveToGarage}
+          accessibilityRole="button"
+          accessibilityLabel="Save this vehicle to your garage"
+          style={({ pressed }) => [styles.saveBtn, press(pressed)]}
+        >
+          <Ionicons name="bookmark-outline" size={16} color={COLORS.accent} />
+          <Text style={styles.saveBtnText}>Garage</Text>
+        </Pressable>
+      </View>
+    ) : (
+      <Text style={styles.prompt}>{promptText}</Text>
+    );
 
+  const renderSearch = () => (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <VehiclePicker year={year} make={make} model={model} onChange={handleVehicleChange} />
+
+      {year && make ? (
+        <View style={sharedStyles.card}>
+          <Text style={sharedStyles.cardLabel}>ENGINE (OPTIONAL)</Text>
+          <View style={styles.engineRow}>
+            <Ionicons
+              name="construct-outline" size={18}
+              color={engine ? COLORS.cyan : COLORS.textDim}
+              style={{ marginRight: 10 }}
+            />
+            <TextInput
+              style={styles.engineInput}
+              placeholder="e.g. 2.0L, 3.5L V6"
+              placeholderTextColor={COLORS.textDim}
+              value={engine}
+              onChangeText={setEngine}
+              autoCapitalize="characters"
+            />
+          </View>
+          <Text style={sharedStyles.hint}>
+            Adding the engine sharpens every retailer search.
+          </Text>
+        </View>
+      ) : null}
+
+      {gate('Pick a year and make to unlock the parts grid.')}
+
+      <PartGrid enabled={hasVehicle()} onSelect={openPart} />
+    </ScrollView>
+  );
+
+  const renderVin = () => (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <VinDecoder vin={vin} onChange={handleVinChange} onDecoded={handleVinDecoded} />
+      {gate('Decode a VIN above to unlock the parts grid.')}
       <PartGrid enabled={hasVehicle()} onSelect={openPart} />
     </ScrollView>
   );
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.page} />
 
-      <View style={styles.header}>
-        <Text style={styles.logo}>
-          Mechanic<Text style={styles.logoAccent}>Mate</Text>
-        </Text>
-        <Text style={styles.tagline}>
-          Find the right part. Track your maintenance. Watch how to install it.
-        </Text>
+      {/* ── Ambient stage lighting (felt, not seen) ─────────────── */}
+      <View pointerEvents="none" style={styles.ambient}>
+        <View style={styles.glowTop} />
+        <View style={styles.glowBottom} />
       </View>
 
-      {activeTab === 'parts' && renderParts()}
-      {activeTab === 'garage' && (
-        <GarageScreen
-          vehicles={garage.vehicles}
-          onRemove={garage.removeVehicle}
-          onSelect={handleGarageSelect}
-        />
-      )}
-      {activeTab === 'maint' && (
-        <MaintenanceScreen
-          vehicles={garage.vehicles}
-          records={maint.records}
-          onLog={maint.logService}
-          onRemoveRecord={maint.removeRecord}
-          getRecordsForVehicle={maint.getRecordsForVehicle}
-        />
-      )}
-
-      <View style={styles.tabBar}>
-        {TABS.map((tab) => (
-          <TouchableOpacity key={tab.id} style={styles.tab} onPress={() => setActiveTab(tab.id)}>
-            <Text style={styles.tabIcon}>{tab.icon}</Text>
-            <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>
-              {tab.label}
+      <View style={styles.column}>
+        {/* ── Pro header ─────────────────────────────────────────── */}
+        <View style={styles.header}>
+          <View style={styles.logoTile}>
+            <Ionicons name="construct" size={24} color={COLORS.textOnAccent} />
+          </View>
+          <View style={styles.nameWrap}>
+            <Text style={styles.logoText}>
+              Mechanic<Text style={styles.logoAccent}>Mate</Text>
             </Text>
-            {tab.id === 'garage' && garage.vehicles.length > 0 ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{garage.vehicles.length}</Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-        ))}
+            <Text style={styles.tagline}>PRO PARTS FINDER</Text>
+          </View>
+        </View>
+
+        {/* ── Sliding top-tab rail ───────────────────────────────── */}
+        <TopTabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
+
+        {/* ── Active screen ──────────────────────────────────────── */}
+        <View style={styles.screenArea}>
+          {activeTab === 'search'  && renderSearch()}
+          {activeTab === 'vin'     && renderVin()}
+          {activeTab === 'garage'  && (
+            <GarageScreen
+              vehicles={garage.vehicles}
+              onRemove={garage.removeVehicle}
+              onSelect={handleGarageSelect}
+            />
+          )}
+          {activeTab === 'history' && (
+            <MaintenanceScreen
+              vehicles={garage.vehicles}
+              records={maint.records}
+              onLog={maint.logService}
+              onRemoveRecord={maint.removeRecord}
+              getRecordsForVehicle={maint.getRecordsForVehicle}
+            />
+          )}
+        </View>
+
+        {/* ── Footer ─────────────────────────────────────────────── */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            MechanicMate <Text style={styles.footerAccent}>Pro</Text>  ·  © 2026
+          </Text>
+        </View>
       </View>
 
       <ActionModal
@@ -200,52 +224,74 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: {
-    flex: 1, backgroundColor: COLORS.bg,
+    flex: 1, backgroundColor: COLORS.page,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
+  ambient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 },
+  glowTop: {
+    position: 'absolute', top: -130, left: '8%', right: '8%', height: 280,
+    borderRadius: 220, backgroundColor: hexA(COLORS.accent, 0.06),
+  },
+  glowBottom: {
+    position: 'absolute', bottom: -150, left: '4%', right: '28%', height: 300,
+    borderRadius: 240, backgroundColor: hexA(COLORS.cyan, 0.045),
+  },
+  column: { flex: 1, zIndex: 1 },
   header: {
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14,
-    borderBottomWidth: 1, borderBottomColor: COLORS.card,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: COLORS.line,
   },
-  logo: { fontSize: 28, fontWeight: '800', color: COLORS.text, letterSpacing: 0.5 },
+  logoTile: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.accent,
+    shadowColor: COLORS.accent, shadowOpacity: 0.5, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  },
+  nameWrap: { marginLeft: 12 },
+  logoText: { color: COLORS.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
   logoAccent: { color: COLORS.accent },
-  tagline: { fontSize: 12, color: COLORS.textMuted, marginTop: 4 },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  toggleRow: {
-    flexDirection: 'row', backgroundColor: COLORS.card,
-    borderRadius: 12, padding: 4, marginBottom: 18,
+  tagline: {
+    color: COLORS.textDim, fontSize: 10, fontWeight: '800',
+    letterSpacing: 1.6, marginTop: 2,
   },
-  toggleBtn: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
-  toggleBtnActive: { backgroundColor: COLORS.accent },
-  toggleText: { color: COLORS.textMuted, fontWeight: '700', fontSize: 14 },
-  toggleTextActive: { color: COLORS.textOnAccent },
-  bannerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
+  screenArea: { flex: 1 },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
+  scrollContent: { padding: 20, paddingBottom: 8 },
+  engineRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.page,
+    borderRadius: 12, borderWidth: 1, borderColor: COLORS.line,
+    paddingHorizontal: 14, height: 52,
+  },
+  engineInput: { flex: 1, color: COLORS.text, fontSize: 16, letterSpacing: 0.5, paddingVertical: 0 },
+  bannerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 10 },
   banner: {
-    flex: 1, backgroundColor: COLORS.accent, borderRadius: 12,
-    paddingVertical: 12, paddingHorizontal: 16,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.accent, borderRadius: 14,
+    paddingVertical: 13, paddingHorizontal: 14,
+    shadowColor: COLORS.accent, shadowOpacity: 0.4, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 }, elevation: 3,
   },
-  bannerText: { color: COLORS.textOnAccent, fontWeight: '800', fontSize: 15 },
+  bannerChip: {
+    width: 30, height: 30, borderRadius: 9, marginRight: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  bannerText: { flex: 1, color: COLORS.textOnAccent, fontWeight: '800', fontSize: 15 },
   saveBtn: {
-    backgroundColor: COLORS.card, borderRadius: 12, paddingVertical: 12,
-    paddingHorizontal: 16, borderWidth: 1, borderColor: COLORS.border,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: 14,
+    paddingVertical: 13, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: COLORS.line,
   },
-  saveBtnText: { color: COLORS.accent, fontWeight: '800', fontSize: 14 },
-  prompt: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginVertical: 14 },
-  tabBar: {
-    flexDirection: 'row', backgroundColor: COLORS.card,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 8, paddingTop: 8,
+  saveBtnText: { color: COLORS.accent, fontWeight: '800', fontSize: 14, marginLeft: 6 },
+  prompt: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginVertical: 16, lineHeight: 20 },
+  footer: {
+    paddingVertical: 11, alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: COLORS.line,
+    backgroundColor: COLORS.page,
   },
-  tab: { flex: 1, alignItems: 'center', position: 'relative' },
-  tabIcon: { fontSize: 22, marginBottom: 3 },
-  tabLabel: { color: COLORS.textDim, fontSize: 11, fontWeight: '600' },
-  tabLabelActive: { color: COLORS.accent, fontWeight: '800' },
-  badge: {
-    position: 'absolute', top: -4, right: 22,
-    backgroundColor: COLORS.accent, borderRadius: 9,
-    minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: { color: COLORS.textOnAccent, fontSize: 10, fontWeight: '800' },
+  footerText: { color: COLORS.textDim, fontSize: TYPE.micro, fontWeight: '700', letterSpacing: 0.6 },
+  footerAccent: { color: COLORS.accent },
 });
