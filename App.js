@@ -22,6 +22,13 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const AMAZON_AFFILIATE_TAG = 'YOUR-TAG-20';
+// Sovrn Commerce key: tracks AutoZone and Advance Auto Parts links.
+const SOVRN_KEY = 'ad1d7954ef97f039e50b0cec744b6d7e';
+const SITE_URL = 'https://mechanicmate.site';
+const SUPPORT_EMAIL = 'support@mechanicmate.site';
+// Wrap a retailer URL in a Sovrn tracked link.
+const sovrnLink = (url) =>
+  SOVRN_KEY ? `https://redirect.viglink.com/?key=${SOVRN_KEY}&u=${encodeURIComponent(url)}` : url;
 const GARAGE_KEY = 'mechanicmate.garage.v1';
 const LOG_KEY = 'mechanicmate.log.v1';
 const MAKES = [
@@ -57,6 +64,7 @@ const findVin = (value) => value.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/)?.[0]
 
 export default function App() {
   const [tab, setTab] = useState('Home');
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [mode, setMode] = useState('VIN');
   const [vin, setVin] = useState('');
   const [year, setYear] = useState('');
@@ -184,7 +192,8 @@ export default function App() {
   const search = (where) => {
     const q = encodeURIComponent(`${label(current)} ${current?.engine || ''} ${part?.[2]}`);
     const urls = {
-      AutoZone: `https://www.autozone.com/searchresult?searchText=${q}`,
+      AutoZone: sovrnLink(`https://www.autozone.com/searchresult?searchText=${q}`),
+      Advance: sovrnLink(`https://shop.advanceautoparts.com/web/SearchResults?searchTerm=${q}`),
       "O'Reilly": `https://www.oreillyauto.com/search?q=${q}`,
       Amazon: `https://www.amazon.com/s?k=${q}${
         AMAZON_AFFILIATE_TAG === 'YOUR-TAG-20' ? '' : `&tag=${AMAZON_AFFILIATE_TAG}`
@@ -376,9 +385,19 @@ export default function App() {
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" />
       <View style={s.header}>
-        <Text style={s.logo}>
-          Mechanic<Text style={s.orange}>Mate</Text>
-        </Text>
+        <View style={s.headerRow}>
+          <Text style={s.logo}>
+            Mechanic<Text style={s.orange}>Mate</Text>
+          </Text>
+          <TouchableOpacity
+            onPress={() => setAboutOpen(true)}
+            style={s.aboutBtn}
+            accessibilityRole="button"
+            accessibilityLabel="About MechanicMate"
+          >
+            <Text style={s.aboutBtnText}>ⓘ</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={s.tagline}>Your car-care sidekick</Text>
       </View>
 
@@ -579,6 +598,7 @@ export default function App() {
               We’ll open a browser search. Verify exact fitment before buying.
             </Text>
             <Button text="Shop AutoZone" onPress={() => search('AutoZone')} />
+            <Button text="Shop Advance Auto Parts" onPress={() => search('Advance')} />
             <Button text="Shop O'Reilly" onPress={() => search("O'Reilly")} />
             <Button text="Shop Amazon" onPress={() => search('Amazon')} />
             <TouchableOpacity style={s.video} onPress={() => search('YouTube')}>
@@ -587,8 +607,43 @@ export default function App() {
             <TouchableOpacity style={s.close} onPress={() => setPart(null)}>
               <Text style={s.muted}>Close</Text>
             </TouchableOpacity>
+            <Text style={s.disclosureSmall}>
+              Some store links may earn us a commission at no extra cost to you.
+            </Text>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* About Modal */}
+      <Modal visible={aboutOpen} transparent animationType="slide" onRequestClose={() => setAboutOpen(false)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <Text style={s.modalTitle}>About MechanicMate</Text>
+            <Text style={s.aboutText}>
+              Find parts for your vehicle, compare where to buy them, and watch how to install them.
+            </Text>
+            <Text style={s.aboutHeading}>Affiliate disclosure</Text>
+            <Text style={s.aboutText}>
+              Some store links in this app are affiliate links. If you buy through them, we may earn a
+              small commission at no extra cost to you. As an Amazon Associate I earn from qualifying
+              purchases.
+            </Text>
+            <Text style={s.aboutHeading}>Fitment</Text>
+            <Text style={s.aboutText}>
+              Fitment can vary by trim, engine and options. Always confirm fitment with the retailer
+              before you buy.
+            </Text>
+            <View style={{ height: 8 }} />
+            <Button text="Privacy Policy" onPress={() => Linking.openURL(`${SITE_URL}/privacy.html`)} />
+            <Button text="Help & Support" onPress={() => Linking.openURL(`${SITE_URL}/support.html`)} />
+            <TouchableOpacity style={s.close} onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
+              <Text style={s.aboutLink}>{SUPPORT_EMAIL}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.close} onPress={() => setAboutOpen(false)}>
+              <Text style={s.muted}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Save Vehicle Modal */}
@@ -836,6 +891,13 @@ const s = StyleSheet.create({
     fontWeight: '900',
     color: '#F8FAFC',
   },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  aboutBtn: { padding: 6 },
+  aboutBtnText: { color: '#94A3B8', fontSize: 24 },
+  aboutHeading: { color: '#F8FAFC', fontSize: 15, fontWeight: '900', marginTop: 14, marginBottom: 4 },
+  aboutText: { color: '#CBD5E1', fontSize: 14, lineHeight: 20, marginTop: 6 },
+  aboutLink: { color: '#FDBA74', fontWeight: '700' },
+  disclosureSmall: { color: '#64748B', fontSize: 11, lineHeight: 15, textAlign: 'center' },
   orange: {
     color: '#F97316',
   },
