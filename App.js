@@ -1,297 +1,1147 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
-  View, Text, Pressable, ScrollView, TextInput,
-  SafeAreaView, StatusBar, Platform, StyleSheet, Alert,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, TYPE, hexA, press, sharedStyles } from './src/theme';
-import { useGarage, useMaintenance } from './src/hooks/useGarage';
+import { requireOptionalNativeModule } from 'expo-modules-core';
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-import VehiclePicker     from './src/components/VehiclePicker';
-import VinDecoder        from './src/components/VinDecoder';
-import PartGrid          from './src/components/PartGrid';
-import ActionModal       from './src/components/ActionModal';
-import GarageScreen      from './src/components/GarageScreen';
-import MaintenanceScreen from './src/components/MaintenanceScreen';
-import TopTabs           from './src/components/TopTabs';
-
-const TABS = [
-  { id: 'search',  icon: 'search-outline', label: 'Search' },
-  { id: 'vin',     icon: 'scan-outline',   label: 'VIN' },
-  { id: 'garage',  icon: 'home-outline',   label: 'Garage' },
-  { id: 'history', icon: 'time-outline',   label: 'History' },
+const AMAZON_AFFILIATE_TAG = 'YOUR-TAG-20';
+const GARAGE_KEY = 'mechanicmate.garage.v1';
+const LOG_KEY = 'mechanicmate.log.v1';
+const MAKES = [
+  'Acura', 'BMW', 'Chevrolet', 'Dodge', 'Ford', 'GMC', 'Honda', 'Hyundai',
+  'Jeep', 'Kia', 'Mazda', 'Nissan', 'Ram', 'Subaru', 'Toyota', 'Volkswagen',
+];
+const YEARS = Array.from({ length: 27 }, (_, i) => String(new Date().getFullYear() - i));
+const PARTS = [
+  ['Brake Pads', '🛑', 'brake pads'],
+  ['Brake Rotors', '⚙️', 'brake rotors'],
+  ['Oil Filter', '🛢️', 'oil filter'],
+  ['Engine Air Filter', '🌬️', 'engine air filter'],
+  ['Cabin Air Filter', '❄️', 'cabin air filter'],
+  ['Battery', '🔋', 'car battery'],
+  ['Spark Plugs', '⚡', 'spark plugs'],
+  ['Wiper Blades', '💧', 'windshield wiper blades'],
+  ['Serpentine Belt', '➰', 'serpentine belt'],
+  ['Headlight Bulb', '💡', 'headlight bulb'],
+];
+const SERVICES = [
+  'Oil change',
+  'Tire rotation',
+  'Brake service',
+  'Air filter',
+  'Battery',
+  'Wiper blades',
+  'Inspection',
 ];
 
+const cleanVin = (v) => v.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+const label = (v) => (v ? [v.year, v.make, v.model].filter(Boolean).join(' ') : '');
+const findVin = (value) => value.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/)?.[0] || '';
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('search');
-  const isVin = activeTab === 'vin';
+  const [tab, setTab] = useState('Home');
+  const [mode, setMode] = useState('VIN');
+  const [vin, setVin] = useState('');
+  const [year, setYear] = useState('');
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [current, setCurrent] = useState(null);
+  const [garage, setGarage] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [busy, setBusy] = useState(true);
+  const [part, setPart] = useState(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState(null);
+  const [nickname, setNickname] = useState('');
+  const [miles, setMiles] = useState('');
+  const [service, setService] = useState(SERVICES[0]);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [recognizingVin, setRecognizingVin] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const cameraRef = useRef(null);
 
-  const [year, setYear]     = useState('');
-  const [make, setMake]     = useState('');
-  const [model, setModel]   = useState('');
-  const [engine, setEngine] = useState('');
-
-  const [vin, setVin]             = useState('');
-  const [decodedVin, setDecodedVin] = useState(null);
-
-  const [selectedPart, setSelectedPart] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
-
-  const garage = useGarage();
-  const maint  = useMaintenance();
-
-  // ── Vehicle string (the single source of truth for every search) ──
-  const vehicleString = () => {
-    if (isVin) {
-      if (decodedVin?.make) {
-        return [decodedVin.year, decodedVin.make, decodedVin.model]
-          .filter(Boolean).join(' ');
+  useEffect(() => {
+    (async () => {
+      try {
+        const [g, l] = await Promise.all([
+          AsyncStorage.getItem(GARAGE_KEY),
+          AsyncStorage.getItem(LOG_KEY),
+        ]);
+        if (g) setGarage(JSON.parse(g));
+        if (l) setLogs(JSON.parse(l));
+      } finally {
+        setBusy(false);
       }
-      return vin.trim();
+    })();
+  }, []);
+
+  const persistGarage = async (next) => {
+    setGarage(next);
+    await AsyncStorage.setItem(GARAGE_KEY, JSON.stringify(next));
+  };
+
+  const persistLogs = async (next) => {
+    setLogs(next);
+    await AsyncStorage.setItem(LOG_KEY, JSON.stringify(next));
+  };
+
+  const decode = async () => {
+    const id = cleanVin(vin);
+    if (id.length !== 17) {
+      return Alert.alert('Enter all 17 characters', 'A VIN always has 17 letters and numbers.');
     }
-    return [year, make, model, engine].filter(Boolean).join(' ');
+    setBusy(true);
+    try {
+      const r = await fetch(
+        `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/${id}?format=json`
+      );
+      const row = (await r.json()).Results?.[0];
+      if (!row?.Make || !row?.Model) throw new Error();
+      const vehicle = {
+        id: `vin-${id}`,
+        vin: id,
+        year: row.ModelYear,
+        make: row.Make,
+        model: row.Model,
+        engine: [
+          row.DisplacementL && `${row.DisplacementL}L`,
+          row.EngineCylinders && `${row.EngineCylinders} cyl`,
+          row.EngineModel,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        drive: row.DriveType || '',
+        nickname: '',
+        miles: '',
+        verified: true,
+      };
+      await persistGarage([vehicle, ...garage.filter((v) => v.vin !== id)]);
+      setCurrent(vehicle);
+      setNickname('');
+      setMiles('');
+      Alert.alert(
+        'Saved to My Garage',
+        `${label(vehicle)} is saved. You can add mileage any time from My Garage.`
+      );
+    } catch {
+      Alert.alert(
+        'VIN lookup unavailable',
+        'Check your connection or enter your vehicle manually.'
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const hasVehicle = () =>
-    isVin ? Boolean(decodedVin?.make) : Boolean(year && make);
-
-  const handleVehicleChange = (c) => {
-    if (c.year !== undefined)  { setYear(c.year);  setEngine(''); }
-    if (c.make !== undefined)  { setMake(c.make);  setEngine(''); }
-    if (c.model !== undefined) setModel(c.model);
+  const manual = () => {
+    if (!year || !make || !model.trim()) {
+      return Alert.alert('Finish your vehicle', 'Choose a year and make, then type the model.');
+    }
+    setCurrent({
+      id: `manual-${Date.now()}`,
+      year,
+      make,
+      model: model.trim(),
+      engine: '',
+      drive: '',
+      verified: false,
+    });
+    setNickname('');
+    setMiles('');
+    setSaveOpen(true);
   };
 
-  // Editing the VIN wipes any stale decode at the App level too.
-  const handleVinChange = (t) => { setVin(t); setDecodedVin(null); };
-  const handleVinDecoded = (r) => setDecodedVin(r);
-
-  const handleSaveToGarage = () => {
-    const v = isVin && decodedVin
-      ? {
-          year: decodedVin.year, make: decodedVin.make, model: decodedVin.model,
-          vin: vin.trim(), engine: decodedVin.engine, cylinders: decodedVin.cylinders,
-          displacement: decodedVin.displacement, fuelType: decodedVin.fuelType,
-          driveType: decodedVin.driveType,
-        }
-      : { year, make, model, vin: '' };
-    garage.addVehicle(v);
-    Alert.alert('Saved 🏠', `${v.year} ${v.make} ${v.model || ''} parked in your garage.`);
+  const saveVehicle = async () => {
+    const v = {
+      ...current,
+      id: `${current.id}-${Date.now()}`,
+      nickname: nickname.trim(),
+      miles: miles.replace(/\D/g, ''),
+    };
+    await persistGarage([v, ...garage.filter((x) => !v.vin || x.vin !== v.vin)]);
+    setCurrent(v);
+    setSaveOpen(false);
   };
 
-  const handleGarageSelect = (v) => {
-    setActiveTab('search');
-    setYear(v.year);
-    setMake(v.make);
-    setModel(v.model || '');
-    setEngine('');
+  const search = (where) => {
+    const q = encodeURIComponent(`${label(current)} ${current?.engine || ''} ${part?.[2]}`);
+    const urls = {
+      AutoZone: `https://www.autozone.com/searchresult?searchText=${q}`,
+      "O'Reilly": `https://www.oreillyauto.com/search?q=${q}`,
+      Amazon: `https://www.amazon.com/s?k=${q}${
+        AMAZON_AFFILIATE_TAG === 'YOUR-TAG-20' ? '' : `&tag=${AMAZON_AFFILIATE_TAG}`
+      }`,
+      YouTube: `https://www.youtube.com/results?search_query=${encodeURIComponent(
+        `${label(current)} ${part?.[2]} replacement how to`
+      )}`,
+    };
+    Linking.openURL(urls[where]);
   };
 
-  const openPart = (part) => { setSelectedPart(part); setModalVisible(true); };
+  const addLog = async () => {
+    if (!miles) {
+      return Alert.alert('Mileage is needed', 'Enter the odometer reading for this service.');
+    }
+    const row = {
+      id: String(Date.now()),
+      vehicleId: current.id,
+      service,
+      miles: miles.replace(/\D/g, ''),
+      date: new Date().toISOString().slice(0, 10),
+    };
+    await persistLogs([row, ...logs]);
+    setMiles('');
+    setLogOpen(false);
+  };
 
-  // The orange "your ride" banner + Save button, or the prompt that
-  // explains why the grid is still locked. Reused by both flows.
-  const gate = (promptText) =>
-    hasVehicle() ? (
-      <View style={styles.bannerRow}>
-        <View style={styles.banner}>
-          <View style={styles.bannerChip}>
-            <Ionicons name="car-sport-outline" size={16} color={COLORS.textOnAccent} />
-          </View>
-          <Text style={styles.bannerText} numberOfLines={1}>{vehicleString()}</Text>
+  const selectVehicle = (v) => {
+    setCurrent(v);
+    setTab('Home');
+  };
+
+  const openMileageEditor = (v) => {
+    setEditingVehicle(v);
+    setMiles(v.miles || '');
+  };
+
+  const updateMileage = async () => {
+    const updated = { ...editingVehicle, miles: miles.replace(/\D/g, '') };
+    const next = garage.map((v) => (v.id === updated.id ? updated : v));
+    await persistGarage(next);
+    if (current?.id === updated.id) setCurrent(updated);
+    setEditingVehicle(null);
+    setMiles('');
+  };
+
+  const openScanner = async () => {
+    if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission();
+      if (!permission.granted) {
+        return Alert.alert(
+          'Camera access is needed',
+          'Allow camera access to scan the VIN label, or use Type VIN instead.'
+        );
+      }
+    }
+    setScannerOpen(true);
+  };
+
+  const onBarcodeScanned = ({ data }) => {
+    const scanned = findVin(data);
+    if (!scanned) return;
+    setScannerOpen(false);
+    setMode('VIN');
+    setVin(scanned);
+    Alert.alert('VIN found', `${scanned}\n\nTap “Look up my vehicle” to confirm it.`);
+  };
+
+  const recognizePrintedVin = async () => {
+    if (recognizingVin || !cameraRef.current) return;
+
+    const hasNativeOCR = Boolean(requireOptionalNativeModule('RNMLKitTextRecognition'));
+    if (!hasNativeOCR) {
+      return Alert.alert(
+        'Preview Build Required',
+        'Printed text OCR requires native MLKit code and runs in your TestFlight / Development build. In Expo Go, scan the barcode on the driver-door jamb label.'
+      );
+    }
+
+    setRecognizingVin(true);
+    try {
+      const mlkit = require('@infinitered/react-native-mlkit-text-recognition');
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.9, skipProcessing: false });
+      const result = await mlkit.recognizeText(photo.uri);
+      const scanned = findVin(result.text);
+
+      if (!scanned) {
+        return Alert.alert(
+          'No VIN found',
+          'Hold steady, fill the orange guide with the VIN plate, and try again. You can also scan the barcode on the driver-door label.'
+        );
+      }
+
+      setScannerOpen(false);
+      setMode('VIN');
+      setVin(scanned);
+      Alert.alert('VIN found', `${scanned}\n\nTap “Look up my vehicle” to confirm it.`);
+    } catch {
+      Alert.alert(
+        'Scan failed',
+        'Unable to read text from image. Try scanning the barcode on the door jamb instead.'
+      );
+    } finally {
+      setRecognizingVin(false);
+    }
+  };
+
+  const activeLogs = current ? logs.filter((x) => x.vehicleId === current.id) : [];
+
+  if (busy) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={s.center}>
+          <ActivityIndicator color="#F97316" size="large" />
+          <Text style={s.muted}>Loading MechanicMate…</Text>
         </View>
-        <Pressable
-          onPress={handleSaveToGarage}
-          accessibilityRole="button"
-          accessibilityLabel="Save this vehicle to your garage"
-          style={({ pressed }) => [styles.saveBtn, press(pressed)]}
-        >
-          <Ionicons name="bookmark-outline" size={16} color={COLORS.accent} />
-          <Text style={styles.saveBtnText}>Garage</Text>
-        </Pressable>
+      </SafeAreaView>
+    );
+  }
+
+  const Banner = () =>
+    current && (
+      <View style={s.banner}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.bannerTitle}>{current.nickname || label(current)}</Text>
+          <Text style={s.bannerSub}>
+            {[current.engine, current.drive].filter(Boolean).join(' • ') ||
+              (current.verified ? 'VIN verified' : 'Vehicle entered manually')}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => setTab('Garage')}>
+          <Text style={s.change}>Change</Text>
+        </TouchableOpacity>
       </View>
-    ) : (
-      <Text style={styles.prompt}>{promptText}</Text>
     );
 
-  const renderSearch = () => (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      <VehiclePicker year={year} make={make} model={model} onChange={handleVehicleChange} />
+  // --- VIN SCANNER SCREEN ---
+  if (scannerOpen) {
+    return (
+      <View style={s.scannerContainer}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {year && make ? (
-        <View style={sharedStyles.card}>
-          <Text style={sharedStyles.cardLabel}>ENGINE (OPTIONAL)</Text>
-          <View style={styles.engineRow}>
-            <Ionicons
-              name="construct-outline" size={18}
-              color={engine ? COLORS.cyan : COLORS.textDim}
-              style={{ marginRight: 10 }}
-            />
-            <TextInput
-              style={styles.engineInput}
-              placeholder="e.g. 2.0L, 3.5L V6"
-              placeholderTextColor={COLORS.textDim}
-              value={engine}
-              onChangeText={setEngine}
-              autoCapitalize="characters"
-            />
-          </View>
-          <Text style={sharedStyles.hint}>
-            Adding the engine sharpens every retailer search.
+        <CameraView
+          ref={cameraRef}
+          style={s.camera}
+          facing="back"
+          autofocus="on"
+          onBarcodeScanned={onBarcodeScanned}
+          barcodeScannerSettings={{
+            barcodeTypes: ['code39', 'code128', 'pdf417', 'datamatrix'],
+          }}
+        />
+
+        <View pointerEvents="none" style={s.scannerTopHeader}>
+          <Text style={s.scannerTitle}>Scan or capture VIN</Text>
+          <Text style={s.scannerText}>
+            Point at the dashboard VIN plate or driver-door label.
           </Text>
         </View>
-      ) : null}
 
-      {gate('Pick a year and make to unlock the parts grid.')}
+        <View pointerEvents="none" style={s.scannerCenterTarget}>
+          <View style={s.scanFrame} />
+          <Text style={s.scannerHint}>
+            Barcodes scan automatically. For printed text, center the VIN in the guide and tap Capture.
+          </Text>
+        </View>
 
-      <PartGrid enabled={hasVehicle()} onSelect={openPart} />
-    </ScrollView>
-  );
-
-  const renderVin = () => (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      <VinDecoder vin={vin} onChange={handleVinChange} onDecoded={handleVinDecoded} />
-      {gate('Decode a VIN above to unlock the parts grid.')}
-      <PartGrid enabled={hasVehicle()} onSelect={openPart} />
-    </ScrollView>
-  );
-
-  return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.page} />
-
-      {/* ── Ambient stage lighting (felt, not seen) ─────────────── */}
-      <View pointerEvents="none" style={styles.ambient}>
-        <View style={styles.glowTop} />
-        <View style={styles.glowBottom} />
-      </View>
-
-      <View style={styles.column}>
-        {/* ── Pro header ─────────────────────────────────────────── */}
-        <View style={styles.header}>
-          <View style={styles.logoTile}>
-            <Ionicons name="construct" size={24} color={COLORS.textOnAccent} />
-          </View>
-          <View style={styles.nameWrap}>
-            <Text style={styles.logoText}>
-              Mechanic<Text style={styles.logoAccent}>Mate</Text>
+        <View style={s.scannerBottomBar}>
+          <TouchableOpacity
+            style={s.captureButton}
+            onPress={recognizePrintedVin}
+            disabled={recognizingVin}
+          >
+            <Text style={s.captureButtonText}>
+              {recognizingVin ? 'Reading VIN…' : 'Capture printed VIN'}
             </Text>
-            <Text style={styles.tagline}>PRO PARTS FINDER</Text>
-          </View>
-        </View>
+          </TouchableOpacity>
 
-        {/* ── Sliding top-tab rail ───────────────────────────────── */}
-        <TopTabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
-
-        {/* ── Active screen ──────────────────────────────────────── */}
-        <View style={styles.screenArea}>
-          {activeTab === 'search'  && renderSearch()}
-          {activeTab === 'vin'     && renderVin()}
-          {activeTab === 'garage'  && (
-            <GarageScreen
-              vehicles={garage.vehicles}
-              onRemove={garage.removeVehicle}
-              onSelect={handleGarageSelect}
-            />
-          )}
-          {activeTab === 'history' && (
-            <MaintenanceScreen
-              vehicles={garage.vehicles}
-              records={maint.records}
-              onLog={maint.logService}
-              onRemoveRecord={maint.removeRecord}
-              getRecordsForVehicle={maint.getRecordsForVehicle}
-            />
-          )}
-        </View>
-
-        {/* ── Footer ─────────────────────────────────────────────── */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            MechanicMate <Text style={styles.footerAccent}>Pro</Text>  ·  © 2026
-          </Text>
+          <TouchableOpacity style={s.scannerClose} onPress={() => setScannerOpen(false)}>
+            <Text style={s.scannerCloseText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </View>
+    );
+  }
 
-      <ActionModal
-        visible={modalVisible}
-        part={selectedPart}
-        vehicleString={vehicleString()}
-        onClose={() => setModalVisible(false)}
-      />
+  // --- MAIN APPLICATION SCREEN ---
+  return (
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="light-content" />
+      <View style={s.header}>
+        <Text style={s.logo}>
+          Mechanic<Text style={s.orange}>Mate</Text>
+        </Text>
+        <Text style={s.tagline}>Your car-care sidekick</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+        {tab === 'Home' && (
+          <>
+            <Text style={s.title}>Find a part with confidence.</Text>
+            <Text style={s.sub}>
+              Start with your vehicle, then shop or learn how to do the job.
+            </Text>
+            {current ? (
+              <Banner />
+            ) : (
+              <View style={s.card}>
+                <View style={s.segment}>
+                  <Segment
+                    text="VIN lookup"
+                    active={mode === 'VIN'}
+                    onPress={() => setMode('VIN')}
+                  />
+                  <Segment
+                    text="Enter vehicle"
+                    active={mode === 'Vehicle'}
+                    onPress={() => setMode('Vehicle')}
+                  />
+                </View>
+                {mode === 'VIN' ? (
+                  <>
+                    <Label text="17-CHARACTER VIN" />
+                    <TextInput
+                      style={s.input}
+                      value={vin}
+                      onChangeText={(v) => setVin(cleanVin(v))}
+                      maxLength={17}
+                      autoCapitalize="characters"
+                      placeholder="Enter VIN"
+                      placeholderTextColor="#64748B"
+                    />
+                    <TouchableOpacity style={s.scanButton} onPress={openScanner}>
+                      <Text style={s.scanButtonText}>⌁  Scan VIN barcode</Text>
+                    </TouchableOpacity>
+                    <Text style={s.hint}>
+                      Scan the barcode on the driver-door label, or type the VIN from the dashboard. We use the free U.S. DOT NHTSA database to identify your vehicle.
+                    </Text>
+                    <Button text="Look up my vehicle" onPress={decode} />
+                  </>
+                ) : (
+                  <>
+                    <Label text="YEAR" />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {YEARS.map((v) => (
+                        <Chip key={v} text={v} active={year === v} onPress={() => setYear(v)} />
+                      ))}
+                    </ScrollView>
+                    <Label text="MAKE" />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {MAKES.map((v) => (
+                        <Chip key={v} text={v} active={make === v} onPress={() => setMake(v)} />
+                      ))}
+                    </ScrollView>
+                    <Label text="MODEL" />
+                    <TextInput
+                      style={s.input}
+                      value={model}
+                      onChangeText={setModel}
+                      placeholder="Example: F-150, Camry, CR-V"
+                      placeholderTextColor="#64748B"
+                    />
+                    <Button text="Use this vehicle" onPress={manual} />
+                  </>
+                )}
+              </View>
+            )}
+
+            <Text style={s.section}>Popular maintenance parts</Text>
+            <View style={s.grid}>
+              {PARTS.map((p) => (
+                <TouchableOpacity
+                  key={p[0]}
+                  style={[s.part, !current && s.dim]}
+                  disabled={!current}
+                  onPress={() => setPart(p)}
+                >
+                  <Text style={s.partIcon}>{p[1]}</Text>
+                  <Text style={s.partText}>{p[0]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {current && (
+              <Text style={s.disclaimer}>
+                Search results are a starting point. Always confirm the exact fitment before ordering or installing.
+              </Text>
+            )}
+          </>
+        )}
+
+        {tab === 'Garage' && (
+          <>
+            <Text style={s.title}>My Garage</Text>
+            <Text style={s.sub}>Your vehicles stay on this device. No account needed.</Text>
+            <Button
+              text="Add another vehicle"
+              onPress={() => {
+                setCurrent(null);
+                setTab('Home');
+              }}
+            />
+            {garage.length === 0 ? (
+              <Empty
+                title="Your garage is empty"
+                text="Add a vehicle from the Home tab to save it here."
+              />
+            ) : (
+              garage.map((v) => (
+                <TouchableOpacity
+                  key={v.id}
+                  style={[s.vehicle, current?.id === v.id && s.currentVehicle]}
+                  onPress={() => selectVehicle(v)}
+                >
+                  <Text style={s.vehicleTitle}>{v.nickname || label(v)}</Text>
+                  {v.nickname && <Text style={s.vehicleMeta}>{label(v)}</Text>}
+                  <Text style={s.vehicleMeta}>
+                    {[v.engine, v.drive].filter(Boolean).join(' • ') ||
+                      (v.verified ? 'VIN verified' : 'Vehicle entered manually')}
+                  </Text>
+                  {v.miles && (
+                    <Text style={s.vehicleMeta}>{Number(v.miles).toLocaleString()} miles</Text>
+                  )}
+                  <View style={s.vehicleActions}>
+                    <TouchableOpacity onPress={() => openMileageEditor(v)}>
+                      <Text style={s.edit}>Edit mileage</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => persistGarage(garage.filter((x) => x.id !== v.id))}
+                    >
+                      <Text style={s.remove}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </>
+        )}
+
+        {tab === 'Maintenance' && (
+          <>
+            <Text style={s.title}>Maintenance</Text>
+            <Text style={s.sub}>
+              {current ? label(current) : 'Choose a vehicle from My Garage to track its service.'}
+            </Text>
+            {current && (
+              <>
+                <Banner />
+                <Button text="Add service record" onPress={() => setLogOpen(true)} />
+                {activeLogs.length ? (
+                  activeLogs.map((x) => (
+                    <View key={x.id} style={s.log}>
+                      <Text style={s.vehicleTitle}>{x.service}</Text>
+                      <Text style={s.vehicleMeta}>
+                        {x.date} • {Number(x.miles).toLocaleString()} miles
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Empty
+                    title="No service records yet"
+                    text="Add an oil change, brake service, or another job."
+                  />
+                )}
+              </>
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* Bottom Navigation */}
+      <View style={s.nav}>
+        {['Home', 'Garage', 'Maintenance'].map((x) => (
+          <TouchableOpacity key={x} onPress={() => setTab(x)} style={s.navItem}>
+            <Text style={[s.navText, tab === x && s.orange]}>{x}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Part Modal */}
+      <Modal visible={!!part} transparent animationType="slide" onRequestClose={() => setPart(null)}>
+        <KeyboardAvoidingView
+          style={s.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={s.sheet}>
+            <Text style={s.modalTitle}>
+              {part?.[1]} {part?.[0]}
+            </Text>
+            <Text style={s.modalSub}>{label(current)}</Text>
+            <Text style={s.fit}>
+              We’ll open a browser search. Verify exact fitment before buying.
+            </Text>
+            <Button text="Shop AutoZone" onPress={() => search('AutoZone')} />
+            <Button text="Shop O'Reilly" onPress={() => search("O'Reilly")} />
+            <Button text="Shop Amazon" onPress={() => search('Amazon')} />
+            <TouchableOpacity style={s.video} onPress={() => search('YouTube')}>
+              <Text style={s.videoText}>▶ Watch install videos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.close} onPress={() => setPart(null)}>
+              <Text style={s.muted}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Save Vehicle Modal */}
+      <Modal visible={saveOpen} transparent animationType="slide" onRequestClose={() => setSaveOpen(false)}>
+        <KeyboardAvoidingView
+          style={s.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={s.sheet} keyboardShouldPersistTaps="handled">
+            <Text style={s.modalTitle}>Save to My Garage</Text>
+            <Text style={s.modalSub}>{label(current)}</Text>
+            <Label text="NICKNAME (OPTIONAL)" />
+            <TextInput
+              style={s.input}
+              value={nickname}
+              onChangeText={setNickname}
+              placeholder="Example: David's F-150"
+              placeholderTextColor="#64748B"
+            />
+            <Label text="CURRENT MILEAGE (OPTIONAL)" />
+            <TextInput
+              style={s.input}
+              value={miles}
+              onChangeText={setMiles}
+              keyboardType="number-pad"
+              placeholder="Example: 82,500"
+              placeholderTextColor="#64748B"
+            />
+            <Button text="Save vehicle" onPress={saveVehicle} />
+            <TouchableOpacity style={s.close} onPress={() => setSaveOpen(false)}>
+              <Text style={s.muted}>Not now</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Mileage Editor Modal */}
+      <Modal
+        visible={!!editingVehicle}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditingVehicle(null)}
+      >
+        <KeyboardAvoidingView
+          style={s.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={s.sheet}>
+            <Text style={s.modalTitle}>Update mileage</Text>
+            <Text style={s.modalSub}>{label(editingVehicle)}</Text>
+            <Label text="CURRENT MILEAGE" />
+            <TextInput
+              style={s.input}
+              value={miles}
+              onChangeText={setMiles}
+              keyboardType="number-pad"
+              placeholder="Example: 82,500"
+              placeholderTextColor="#64748B"
+            />
+            <Button text="Save mileage" onPress={updateMileage} />
+            <TouchableOpacity style={s.close} onPress={() => setEditingVehicle(null)}>
+              <Text style={s.muted}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Log Service Modal */}
+      <Modal visible={logOpen} transparent animationType="slide" onRequestClose={() => setLogOpen(false)}>
+        <KeyboardAvoidingView
+          style={s.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={s.sheet} keyboardShouldPersistTaps="handled">
+            <Text style={s.modalTitle}>Add service record</Text>
+            <Label text="SERVICE" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {SERVICES.map((x) => (
+                <Chip key={x} text={x} active={service === x} onPress={() => setService(x)} />
+              ))}
+            </ScrollView>
+            <Label text="MILEAGE" />
+            <TextInput
+              style={s.input}
+              value={miles}
+              onChangeText={setMiles}
+              keyboardType="number-pad"
+              placeholder="Odometer reading"
+              placeholderTextColor="#64748B"
+            />
+            <Button text="Save record" onPress={addLog} />
+            <TouchableOpacity style={s.close} onPress={() => setLogOpen(false)}>
+              <Text style={s.muted}>Cancel</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1, backgroundColor: COLORS.page,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+function Button({ text, onPress }) {
+  return (
+    <TouchableOpacity style={s.button} onPress={onPress}>
+      <Text style={s.buttonText}>{text}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Label({ text }) {
+  return <Text style={s.label}>{text}</Text>;
+}
+
+function Segment({ text, active, onPress }) {
+  return (
+    <TouchableOpacity style={[s.segmentItem, active && s.segmentOn]} onPress={onPress}>
+      <Text style={[s.segmentText, active && s.segmentTextOn]}>{text}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Chip({ text, active, onPress }) {
+  return (
+    <TouchableOpacity style={[s.chip, active && s.chipOn]} onPress={onPress}>
+      <Text style={[s.chipText, active && s.chipTextOn]}>{text}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Empty({ title, text }) {
+  return (
+    <View style={s.empty}>
+      <Text style={s.emptyTitle}>{title}</Text>
+      <Text style={s.emptyText}>{text}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#0F172A' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  muted: { color: '#94A3B8' },
+
+  // Scanner Screen
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
   },
-  ambient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 },
-  glowTop: {
-    position: 'absolute', top: -130, left: '8%', right: '8%', height: 280,
-    borderRadius: 220, backgroundColor: hexA(COLORS.accent, 0.06),
+  camera: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
-  glowBottom: {
-    position: 'absolute', bottom: -150, left: '4%', right: '28%', height: 300,
-    borderRadius: 240, backgroundColor: hexA(COLORS.cyan, 0.045),
+  scannerTopHeader: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 10,
   },
-  column: { flex: 1, zIndex: 1 },
+  scannerTitle: {
+    color: '#FFF',
+    fontWeight: '900',
+    fontSize: 24,
+    textAlign: 'center',
+    textShadowColor: '#000',
+    textShadowRadius: 6,
+  },
+  scannerText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 6,
+    textShadowColor: '#000',
+    textShadowRadius: 6,
+  },
+  scannerCenterTarget: {
+    position: 'absolute',
+    top: SCREEN_HEIGHT * 0.28,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  scanFrame: {
+    width: '100%',
+    height: 130,
+    borderRadius: 16,
+    borderWidth: 3,
+    borderColor: '#F97316',
+    backgroundColor: 'transparent',
+  },
+  scannerHint: {
+    color: '#FFF',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 14,
+    paddingHorizontal: 10,
+    textShadowColor: '#000',
+    textShadowRadius: 6,
+  },
+  scannerBottomBar: {
+    position: 'absolute',
+    bottom: 45,
+    left: 20,
+    right: 20,
+    gap: 10,
+    zIndex: 10,
+  },
+  captureButton: {
+    paddingVertical: 15,
+    borderRadius: 12,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+  },
+  captureButtonText: {
+    color: '#0F172A',
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  scannerClose: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.92)',
+    alignItems: 'center',
+  },
+  scannerCloseText: {
+    color: '#FFF',
+    fontWeight: '900',
+    fontSize: 15,
+  },
+
+  // Main Screen
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 14, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.line,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderColor: '#1E293B',
   },
-  logoTile: {
-    width: 44, height: 44, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.accent,
-    shadowColor: COLORS.accent, shadowOpacity: 0.5, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 }, elevation: 4,
+  logo: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#F8FAFC',
   },
-  nameWrap: { marginLeft: 12 },
-  logoText: { color: COLORS.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
-  logoAccent: { color: COLORS.accent },
+  orange: {
+    color: '#F97316',
+  },
   tagline: {
-    color: COLORS.textDim, fontSize: 10, fontWeight: '800',
-    letterSpacing: 1.6, marginTop: 2,
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 3,
   },
-  screenArea: { flex: 1 },
-  scroll: { flex: 1, backgroundColor: 'transparent' },
-  scrollContent: { padding: 20, paddingBottom: 8 },
-  engineRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.page,
-    borderRadius: 12, borderWidth: 1, borderColor: COLORS.line,
-    paddingHorizontal: 14, height: 52,
+  content: {
+    padding: 20,
+    paddingBottom: 100,
   },
-  engineInput: { flex: 1, color: COLORS.text, fontSize: 16, letterSpacing: 0.5, paddingVertical: 0 },
-  bannerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 10 },
+  title: {
+    fontSize: 27,
+    fontWeight: '900',
+    color: '#F8FAFC',
+  },
+  sub: {
+    color: '#94A3B8',
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: 6,
+    marginBottom: 17,
+  },
+  card: {
+    backgroundColor: '#1E293B',
+    borderRadius: 18,
+    padding: 16,
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    padding: 4,
+    borderRadius: 12,
+    marginBottom: 9,
+  },
+  segmentItem: {
+    flex: 1,
+    padding: 10,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  segmentOn: {
+    backgroundColor: '#F97316',
+  },
+  segmentText: {
+    color: '#94A3B8',
+    fontWeight: '800',
+  },
+  segmentTextOn: {
+    color: '#0F172A',
+  },
+  label: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginTop: 11,
+    marginBottom: 7,
+  },
+  input: {
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 11,
+    color: '#F8FAFC',
+    fontSize: 16,
+    padding: 13,
+  },
+  scanButton: {
+    borderWidth: 1,
+    borderColor: '#F97316',
+    borderRadius: 11,
+    padding: 13,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  scanButtonText: {
+    color: '#FDBA74',
+    fontWeight: '900',
+  },
+  hint: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
+  },
+  button: {
+    backgroundColor: '#F97316',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  buttonText: {
+    color: '#0F172A',
+    fontWeight: '900',
+  },
+  chip: {
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 20,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    marginRight: 8,
+  },
+  chipOn: {
+    backgroundColor: '#F97316',
+    borderColor: '#F97316',
+  },
+  chipText: {
+    color: '#CBD5E1',
+    fontWeight: '700',
+  },
+  chipTextOn: {
+    color: '#0F172A',
+  },
+  section: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#F8FAFC',
+    marginTop: 25,
+    marginBottom: 13,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  part: {
+    width: '48%',
+    minHeight: 105,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 15,
+    padding: 15,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  dim: {
+    opacity: 0.42,
+  },
+  partIcon: {
+    fontSize: 27,
+  },
+  partText: {
+    color: '#E2E8F0',
+    fontWeight: '800',
+    fontSize: 14,
+  },
   banner: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.accent, borderRadius: 14,
-    paddingVertical: 13, paddingHorizontal: 14,
-    shadowColor: COLORS.accent, shadowOpacity: 0.4, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 }, elevation: 3,
+    flexDirection: 'row',
+    backgroundColor: '#172554',
+    borderWidth: 1,
+    borderColor: '#1D4ED8',
+    borderRadius: 15,
+    padding: 15,
   },
-  bannerChip: {
-    width: 30, height: 30, borderRadius: 9, marginRight: 10,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.18)',
+  bannerTitle: {
+    color: '#F8FAFC',
+    fontWeight: '900',
+    fontSize: 16,
   },
-  bannerText: { flex: 1, color: COLORS.textOnAccent, fontWeight: '800', fontSize: 15 },
-  saveBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surface, borderRadius: 14,
-    paddingVertical: 13, paddingHorizontal: 14,
-    borderWidth: 1, borderColor: COLORS.line,
+  bannerSub: {
+    color: '#93C5FD',
+    fontSize: 12,
+    marginTop: 3,
   },
-  saveBtnText: { color: COLORS.accent, fontWeight: '800', fontSize: 14, marginLeft: 6 },
-  prompt: { color: COLORS.textDim, fontSize: 14, textAlign: 'center', marginVertical: 16, lineHeight: 20 },
-  footer: {
-    paddingVertical: 11, alignItems: 'center',
-    borderTopWidth: 1, borderTopColor: COLORS.line,
-    backgroundColor: COLORS.page,
+  change: {
+    color: '#FDBA74',
+    fontWeight: '900',
   },
-  footerText: { color: COLORS.textDim, fontSize: TYPE.micro, fontWeight: '700', letterSpacing: 0.6 },
-  footerAccent: { color: COLORS.accent },
+  disclaimer: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+  },
+  nav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    backgroundColor: '#111C31',
+    borderTopWidth: 1,
+    borderColor: '#1E293B',
+    paddingVertical: 17,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  navText: {
+    color: '#94A3B8',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  vehicle: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 16,
+    padding: 15,
+    marginTop: 12,
+  },
+  currentVehicle: {
+    borderColor: '#F97316',
+  },
+  vehicleTitle: {
+    color: '#F8FAFC',
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  vehicleMeta: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  vehicleActions: {
+    flexDirection: 'row',
+    gap: 18,
+    marginTop: 10,
+  },
+  edit: {
+    color: '#FDBA74',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  remove: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  log: {
+    backgroundColor: '#1E293B',
+    borderLeftWidth: 3,
+    borderColor: '#F97316',
+    borderRadius: 12,
+    padding: 15,
+    marginTop: 11,
+  },
+  empty: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 30,
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  emptyTitle: {
+    color: '#F8FAFC',
+    fontWeight: '900',
+    fontSize: 17,
+  },
+  emptyText: {
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginTop: 7,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.68)',
+  },
+  sheet: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    padding: 21,
+    paddingBottom: 34,
+  },
+  modalTitle: {
+    color: '#F8FAFC',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  modalSub: {
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  fit: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  video: {
+    borderWidth: 1,
+    borderColor: '#DC2626',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  videoText: {
+    color: '#FCA5A5',
+    fontWeight: '900',
+  },
+  close: {
+    padding: 14,
+    alignItems: 'center',
+  },
 });
