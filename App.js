@@ -18,7 +18,18 @@ import {
 // ==========================================================
 // Put your real Amazon Associates tag here (looks like "yourname-20").
 const AMAZON_AFFILIATE_TAG = 'YOUR-TAG-20';
+// Sovrn Commerce key (tracks AutoZone and Advance Auto Parts links).
+const SOVRN_KEY = 'ad1d7954ef97f039e50b0cec744b6d7e';
 // ==========================================================
+
+const SITE_URL = 'https://mechanicmate.site';
+const SUPPORT_EMAIL = 'support@mechanicmate.site';
+
+// Wrap any retailer URL in a Sovrn tracked link.
+const sovrnLink = (url) =>
+  SOVRN_KEY
+    ? `https://redirect.viglink.com/?key=${SOVRN_KEY}&u=${encodeURIComponent(url)}`
+    : url;
 
 // ----------------------------------------------------------
 // VEHICLE DATA
@@ -64,6 +75,7 @@ export default function App() {
   const [vin, setVin] = useState('');
   const [selectedPart, setSelectedPart] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
 
   // Build the vehicle portion of a search query
   const vehicleString = () => {
@@ -94,7 +106,12 @@ export default function App() {
 
   const searchAutoZone = (part) => {
     const q = encodeURIComponent(buildQuery(part));
-    openURL(`https://www.autozone.com/searchresult?searchText=${q}`);
+    openURL(sovrnLink(`https://www.autozone.com/searchresult?searchText=${q}`));
+  };
+
+  const searchAdvance = (part) => {
+    const q = encodeURIComponent(buildQuery(part));
+    openURL(sovrnLink(`https://shop.advanceautoparts.com/web/SearchResults?searchTerm=${q}`));
   };
 
   const searchOReilly = (part) => {
@@ -119,9 +136,18 @@ export default function App() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>
-          Mechanic<Text style={styles.logoAccent}>Mate</Text>
-        </Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.logo}>
+            Mechanic<Text style={styles.logoAccent}>Mate</Text>
+          </Text>
+          <TouchableOpacity
+            style={styles.aboutBtn}
+            onPress={() => setAboutVisible(true)}
+            accessibilityLabel="About MechanicMate"
+          >
+            <Text style={styles.aboutBtnText}>ⓘ</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.tagline}>Find the right part. Watch how to install it.</Text>
       </View>
 
@@ -261,6 +287,13 @@ export default function App() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#CA8A04' }]}
+              onPress={() => selectedPart && searchAdvance(selectedPart)}
+            >
+              <Text style={styles.actionBtnText}>Shop Advance Auto Parts</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#16A34A' }]}
               onPress={() => selectedPart && searchOReilly(selectedPart)}
             >
@@ -287,6 +320,65 @@ export default function App() {
             >
               <Text style={styles.closeBtnText}>Close</Text>
             </TouchableOpacity>
+
+            <Text style={styles.disclosureSmall}>
+              Store links may earn us a commission at no extra cost to you. Always confirm fitment with the retailer.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* About modal */}
+      <Modal
+        visible={aboutVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAboutVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>About MechanicMate</Text>
+            <Text style={styles.aboutText}>
+              MechanicMate helps you find parts for your vehicle, compare where to buy them, and
+              watch how to install them.
+            </Text>
+
+            <Text style={styles.aboutHeading}>Affiliate disclosure</Text>
+            <Text style={styles.aboutText}>
+              Some store links in this app are affiliate links. If you buy through them, we may earn
+              a small commission at no extra cost to you. As an Amazon Associate I earn from
+              qualifying purchases.
+            </Text>
+
+            <Text style={styles.aboutHeading}>Fitment</Text>
+            <Text style={styles.aboutText}>
+              Part fitment can vary by trim, engine and options. Always confirm fitment with the
+              retailer before you buy.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#334155', marginTop: 12 }]}
+              onPress={() => openURL(`${SITE_URL}/privacy.html`)}
+            >
+              <Text style={styles.actionBtnText}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#334155' }]}
+              onPress={() => openURL(`${SITE_URL}/support.html`)}
+            >
+              <Text style={styles.actionBtnText}>Help & Support</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#334155' }]}
+              onPress={() => openURL(`mailto:${SUPPORT_EMAIL}`)}
+            >
+              <Text style={styles.actionBtnText}>Email {SUPPORT_EMAIL}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setAboutVisible(false)}>
+              <Text style={styles.closeBtnText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -307,6 +399,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  aboutBtn: { padding: 6 },
+  aboutBtnText: { color: '#94A3B8', fontSize: 24 },
+  aboutHeading: { color: '#F8FAFC', fontSize: 15, fontWeight: '800', marginTop: 12, marginBottom: 4 },
+  aboutText: { color: '#CBD5E1', fontSize: 14, lineHeight: 20 },
+  disclosureSmall: { color: '#64748B', fontSize: 11, textAlign: 'center', marginTop: 6, lineHeight: 15 },
   logo: { fontSize: 28, fontWeight: '800', color: '#F8FAFC', letterSpacing: 0.5 },
   logoAccent: { color: '#F97316' },
   tagline: { fontSize: 13, color: '#94A3B8', marginTop: 4 },
