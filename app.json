@@ -10,7 +10,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.mechanicmate.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
