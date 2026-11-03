@@ -283,7 +283,7 @@ export default function App() {
       if (!scanned) {
         return Alert.alert(
           'No VIN found',
-          'Hold steady, fill the orange guide with the VIN plate, and try again. You can also scan the barcode on the driver-door label.'
+          'Hold steady about 6–10 inches away so the text is sharp, center the VIN in the guide, and try again. You can also scan the barcode on the driver-door label.'
         );
       }
 
@@ -340,7 +340,6 @@ export default function App() {
           ref={cameraRef}
           style={s.camera}
           facing="back"
-          autofocus="on"
           onBarcodeScanned={onBarcodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: ['code39', 'code128', 'pdf417', 'datamatrix'],
@@ -357,7 +356,7 @@ export default function App() {
         <View pointerEvents="none" style={s.scannerCenterTarget}>
           <View style={s.scanFrame} />
           <Text style={s.scannerHint}>
-            Barcodes scan automatically. For printed text, center the VIN in the guide and tap Capture.
+            Barcodes scan automatically. For printed text, hold the phone 6–10 inches away, center the VIN in the guide, and tap Capture.
           </Text>
         </View>
 
