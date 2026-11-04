@@ -190,7 +190,12 @@ export default function App() {
   };
 
   const search = (where) => {
-    const q = encodeURIComponent(`${label(current)} ${current?.engine || ''} ${part?.[2]}`);
+    // Keep store searches short: year make model + engine size (e.g. "5.3L") + part.
+    // The full NHTSA engine text (injection type, AFM, E85...) makes Advance and O'Reilly return no results.
+    const engineSize = (current?.engine || '').match(/\d+(\.\d+)?L/)?.[0] || '';
+    const q = encodeURIComponent(
+      [label(current), engineSize, part?.[2]].filter(Boolean).join(' ')
+    );
     const urls = {
       AutoZone: sovrnLink(`https://www.autozone.com/searchresult?searchText=${q}`),
       Advance: sovrnLink(`https://shop.advanceautoparts.com/web/SearchResults?searchTerm=${q}`),
