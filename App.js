@@ -108,6 +108,7 @@ export default function App() {
   const [recognizingVin, setRecognizingVin] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
+  const scanHandledRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -134,10 +135,17 @@ export default function App() {
     await AsyncStorage.setItem(LOG_KEY, JSON.stringify(next));
   };
 
-  const decode = async () => {
-    const id = cleanVin(vin);
+  // vinOverride lets a successful scan look up the vehicle right away.
+  const decode = async (vinOverride) => {
+    const id = cleanVin(typeof vinOverride === 'string' ? vinOverride : vin);
     if (id.length !== 17) {
       return Alert.alert('Enter all 17 characters', 'A VIN always has 17 letters and numbers.');
+    }
+    if (!vinChecksumOk(id)) {
+      return Alert.alert(
+        'Check that VIN',
+        'One or more characters look wrong. Compare it with your vehicle and fix any mix-ups like 1/I, 0/O, 8/B or 5/S.'
+      );
     }
     setBusy(true);
     try {
@@ -278,16 +286,19 @@ export default function App() {
         );
       }
     }
+    scanHandledRef.current = false;
     setScannerOpen(true);
   };
 
   const onBarcodeScanned = ({ data }) => {
     const scanned = findVin(data);
-    if (!scanned) return;
+    // The camera can report the same barcode several times; handle it once.
+    if (!scanned || scanHandledRef.current) return;
+    scanHandledRef.current = true;
     setScannerOpen(false);
     setMode('VIN');
     setVin(scanned);
-    Alert.alert('VIN found', `${scanned}\n\nTap “Look up my vehicle” to confirm it.`);
+    decode(scanned);
   };
 
   const recognizePrintedVin = async () => {
@@ -318,7 +329,7 @@ export default function App() {
       setScannerOpen(false);
       setMode('VIN');
       setVin(scanned);
-      Alert.alert('VIN found', `${scanned}\n\nTap “Look up my vehicle” to confirm it.`);
+      decode(scanned);
     } catch {
       Alert.alert(
         'Scan failed',
