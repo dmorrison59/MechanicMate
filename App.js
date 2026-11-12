@@ -21,7 +21,7 @@ import {
 import { requireOptionalNativeModule } from 'expo-modules-core';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const AMAZON_AFFILIATE_TAG = 'YOUR-TAG-20';
+const AMAZON_AFFILIATE_TAG = 'mechanicmate-20';
 // Sovrn Commerce key: tracks AutoZone and Advance Auto Parts links.
 const SOVRN_KEY = 'ad1d7954ef97f039e50b0cec744b6d7e';
 const SITE_URL = 'https://mechanicmate.site';
