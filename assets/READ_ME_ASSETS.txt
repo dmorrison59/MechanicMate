@@ -1,6 +1,5 @@
-Replace these placeholder files with your real images.
-- icon.png (1024x1024)
-- adaptive-icon.png (1024x1024)
-- splash.png
-- favicon.png
-Use the same pink "M" artwork as your Play Store listing.
+App icon: orange gear-and-wrench on dark background (#18181B).
+- icon.png (1024x1024): iOS / general app icon
+- adaptive-icon.png (1024x1024): Android adaptive foreground (transparent), background color set in app.json
+- playstore-icon-512.png (512x512): upload this as the Google Play listing icon
+App name everywhere: MechanicMate
