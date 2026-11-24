@@ -31,7 +31,7 @@ export const AMAZON_AFFILIATE_TAG = '';  // e.g. 'yourname-20'
 // ── eBay Partner Network (EPN) ───────────────────────────
 // Paste your 10-digit EPN campaign ID here (EPN dashboard → Campaigns).
 // While it's blank, the eBay button opens a plain, untracked eBay search.
-export const EBAY_CAMPAIGN_ID = '';  // e.g. '5339123456'
+export const EBAY_CAMPAIGN_ID = '5339248137';
 
 // EPN tracking values for ebay.com (US), from eBay's developer docs:
 //   mkevt=1  click event
