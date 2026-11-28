@@ -22,6 +22,13 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const AMAZON_AFFILIATE_TAG = 'mechanicmate-20';
+// eBay Partner Network campaign ID; tracking values for ebay.com (US).
+const EBAY_CAMPAIGN_ID = '5339248137';
+const ebayLink = (q) =>
+  `https://www.ebay.com/sch/i.html?_nkw=${q}` +
+  (EBAY_CAMPAIGN_ID
+    ? `&mkevt=1&mkcid=1&mkrid=711-53200-19255-0&toolid=10001&customid=mechanicmate-app&campid=${EBAY_CAMPAIGN_ID}`
+    : '');
 // Sovrn Commerce key: tracks AutoZone and Advance Auto Parts links.
 const SOVRN_KEY = 'ad1d7954ef97f039e50b0cec744b6d7e';
 const SITE_URL = 'https://mechanicmate.site';
@@ -234,6 +241,7 @@ export default function App() {
       Amazon: `https://www.amazon.com/s?k=${q}${
         AMAZON_AFFILIATE_TAG === 'YOUR-TAG-20' ? '' : `&tag=${AMAZON_AFFILIATE_TAG}`
       }`,
+      eBay: ebayLink(q),
       YouTube: `https://www.youtube.com/results?search_query=${encodeURIComponent(
         `${label(current)} ${part?.[2]} replacement how to`
       )}`,
@@ -639,6 +647,7 @@ export default function App() {
             <Button text="Shop Advance Auto Parts" onPress={() => search('Advance')} />
             <Button text="Shop O'Reilly" onPress={() => search("O'Reilly")} />
             <Button text="Shop Amazon" onPress={() => search('Amazon')} />
+            <Button text="Shop eBay" onPress={() => search('eBay')} />
             <TouchableOpacity style={s.video} onPress={() => search('YouTube')}>
               <Text style={s.videoText}>▶ Watch install videos</Text>
             </TouchableOpacity>
@@ -646,7 +655,7 @@ export default function App() {
               <Text style={s.muted}>Close</Text>
             </TouchableOpacity>
             <Text style={s.disclosureSmall}>
-              Some store links may earn us a commission at no extra cost to you.
+              Store links, including Amazon and eBay, may earn us a commission at no extra cost to you.
             </Text>
           </View>
         </KeyboardAvoidingView>
@@ -664,7 +673,8 @@ export default function App() {
             <Text style={s.aboutText}>
               Some store links in this app are affiliate links. If you buy through them, we may earn a
               small commission at no extra cost to you. As an Amazon Associate I earn from qualifying
-              purchases.
+              purchases. MechanicMate is an eBay Partner Network affiliate and may earn a commission
+              from eBay purchases made through the app.
             </Text>
             <Text style={s.aboutHeading}>Fitment</Text>
             <Text style={s.aboutText}>
