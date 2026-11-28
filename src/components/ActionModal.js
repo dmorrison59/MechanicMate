@@ -6,14 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, TYPE, press, hexA } from '../theme';
 import {
   searchAutoZone, searchOReilly, searchAmazon,
-  searchYouTube, searchRockAuto,
+  searchYouTube, searchRockAuto, searchEbay,
 } from '../utils/searchLinks';
 
 const useNative = Platform.OS !== 'web';
 
 export default function ActionModal({ visible, part, vehicleString, onClose }) {
-  // index 0 = the part chip pop; 1–5 = the retailer rows rising in.
-  const anims = useRef(Array.from({ length: 6 }, () => new Animated.Value(0))).current;
+  // index 0 = the part chip pop; 1–6 = the retailer rows rising in.
+  const anims = useRef(Array.from({ length: 7 }, () => new Animated.Value(0))).current;
 
   useEffect(() => {
     if (visible) {
@@ -33,6 +33,7 @@ export default function ActionModal({ visible, part, vehicleString, onClose }) {
     { key: 'autozone', name: 'AutoZone',      desc: 'Free same-day store pickup',  vicon: 'storefront-outline',  tint: '#F97316', fn: () => searchAutoZone(vehicleString, part) },
     { key: 'oreilly',  name: "O'Reilly Auto", desc: 'Rewards + free loaner tools', vicon: 'leaf-outline',        tint: '#22C55E', fn: () => searchOReilly(vehicleString, part) },
     { key: 'amazon',   name: 'Amazon',        desc: 'Fast Prime delivery',         vicon: 'cart-outline',        tint: '#3B82F6', fn: () => searchAmazon(vehicleString, part) },
+    { key: 'ebay',     name: 'eBay',          desc: 'New, used & OEM parts',       vicon: 'pricetag-outline',    tint: '#EAB308', fn: () => searchEbay(vehicleString, part) },
     { key: 'rockauto', name: 'RockAuto',      desc: 'Lowest prices, huge catalog', vicon: 'car-outline',         tint: '#EF4444', fn: () => searchRockAuto(vehicleString, part) },
     { key: 'video',    name: 'Install Videos',desc: 'Step-by-step how-to guides',  vicon: 'play-circle-outline', tint: '#A855F7', fn: () => searchYouTube(vehicleString, part) },
   ];
@@ -75,7 +76,7 @@ export default function ActionModal({ visible, part, vehicleString, onClose }) {
             </Pressable>
           </View>
 
-          <Text style={styles.micro}>5 PLACES TO SHOP &amp; LEARN</Text>
+          <Text style={styles.micro}>6 PLACES TO SHOP &amp; LEARN</Text>
 
           <View>
             {actions.map((a, i) => (

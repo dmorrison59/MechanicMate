@@ -28,6 +28,25 @@ const withTag = (url, tag) => {
 // ⚠️  Replace with your real Amazon Associates tag before release.
 export const AMAZON_AFFILIATE_TAG = '';  // e.g. 'yourname-20'
 
+// ── eBay Partner Network (EPN) ───────────────────────────
+// Paste your 10-digit EPN campaign ID here (EPN dashboard → Campaigns).
+// While it's blank, the eBay button opens a plain, untracked eBay search.
+export const EBAY_CAMPAIGN_ID = '5339248137';
+
+// EPN tracking values for ebay.com (US), from eBay's developer docs:
+//   mkevt=1  click event
+//   mkcid=1  EPN channel
+//   mkrid    US rotation ID
+//   toolid   default tool ID
+//   customid sub-ID, so app clicks show separately in EPN reports
+const EBAY_TRACKING = {
+  mkevt: '1',
+  mkcid: '1',
+  mkrid: '711-53200-19255-0',
+  toolid: '10001',
+  customid: 'mechanicmate-app',
+};
+
 function openURL(url) {
   Linking.openURL(url).catch(() => {});
 }
@@ -52,6 +71,20 @@ export function searchAmazon(vehicleString, part) {
     ? `&tag=${encodeURIComponent(AMAZON_AFFILIATE_TAG)}`
     : '';
   openURL(`https://www.amazon.com/s?k=${q}${tag}`);
+}
+
+export function searchEbay(vehicleString, part) {
+  const q = encodeURIComponent(buildQuery(vehicleString, part));
+  let url = `https://www.ebay.com/sch/i.html?_nkw=${q}`;
+  if (EBAY_CAMPAIGN_ID) {
+    // Built by hand (not URLSearchParams) so it works the same on every
+    // React Native version.
+    const params = { ...EBAY_TRACKING, campid: EBAY_CAMPAIGN_ID };
+    url += Object.keys(params)
+      .map((k) => `&${k}=${encodeURIComponent(params[k])}`)
+      .join('');
+  }
+  openURL(url);
 }
 
 export function searchRockAuto(vehicleString, part) {
